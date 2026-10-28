@@ -636,31 +636,90 @@ describe("randomized invariants", () => {
   });
 });
 
+/**
+ * Fastest observed duration of `runs` calls, in milliseconds. The minimum is
+ * the usual microbenchmark statistic: scheduler preemption and GC pauses only
+ * add time, so the fastest run is the closest estimate of the code's own cost
+ * on a shared, noisy CI runner.
+ */
+function fastest(run: () => void, runs: number): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (let round = 0; round < runs; round++) {
+    const started = performance.now();
+    run();
+    best = Math.min(best, performance.now() - started);
+  }
+  return best;
+}
+
+const PERF_ROUNDS = 4;
+
+/**
+ * Wall-clock thresholds flake on slow or loaded CI runners, so growth is
+ * measured instead of absolute time: doubling the input costs ~2x for linear
+ * work and ~4x for quadratic work. A 3x ceiling absorbs JIT warm-up, GC, and
+ * timer noise while still failing any implementation whose cost grows
+ * superlinearly; the 1 ms floor keeps a sub-millisecond sample from turning
+ * timer noise into a meaningless ratio.
+ */
+function expectLinearScaling(label: string, small: () => void, large: () => void): void {
+  small(); // Warm up so JIT tiering cannot masquerade as superlinear growth.
+  large();
+  const smallMs = Math.max(fastest(small, PERF_ROUNDS), 1);
+  const largeMs = fastest(large, PERF_ROUNDS);
+  const ratio = largeMs / smallMs;
+  expect(
+    ratio,
+    `${label}: 1x ${smallMs.toFixed(1)} ms, 2x ${largeMs.toFixed(1)} ms (${ratio.toFixed(2)}x)`,
+  ).toBeLessThan(3);
+}
+
 describe("performance", () => {
-  it("handles a ~5 MB input in linear time", () => {
-    const line = "2026-10-28T12:00:00Z INFO request id=abc ünïcode 日本語 😀\n";
-    const repetitions = Math.floor(5_000_000 / line.length);
-    const value = line.repeat(repetitions);
-    expect(utf8ByteLength(value)).toBeGreaterThan(4_800_000);
+  const line = "2026-10-28T12:00:00Z INFO request id=abc ünïcode 日本語 😀\n";
+
+  it("stays linear on a 5 MB input in every mode", { timeout: 120_000 }, () => {
+    const small = line.repeat(Math.ceil(5_000_000 / line.length));
+    const large = line.repeat(Math.ceil(10_000_000 / line.length));
+    expect(utf8ByteLength(small)).toBeGreaterThan(4_800_000);
 
     for (const mode of ["head", "tail", "head-tail"] as const) {
-      const started = performance.now();
-      const result = truncate(value, { maxBytes: 64 * 1024, maxLines: 500, mode });
-      const elapsed = performance.now() - started;
-      expect(result.keptBytes).toBeLessThanOrEqual(64 * 1024);
-      expect(result.keptLines).toBeLessThanOrEqual(500);
-      expect(elapsed, `${mode} took ${elapsed.toFixed(1)} ms`).toBeLessThan(1500);
+      const options = { maxBytes: 64 * 1024, maxLines: 500, mode };
+      expectLinearScaling(
+        mode,
+        () => {
+          truncate(small, options);
+        },
+        () => {
+          truncate(large, options);
+        },
+      );
+
+      for (const value of [small, large]) {
+        const result = truncate(value, options);
+        expect(result.keptBytes).toBeLessThanOrEqual(64 * 1024);
+        expect(result.keptLines).toBeLessThanOrEqual(500);
+      }
     }
   });
 
-  it("handles a large budget close to the input size", () => {
-    const value = "abc日😀\n".repeat(100_000);
-    const total = utf8ByteLength(value);
-    const started = performance.now();
-    const result = truncate(value, { maxBytes: total - 10, mode: "tail" });
-    const elapsed = performance.now() - started;
+  it("stays linear when the byte budget is close to the input size", { timeout: 120_000 }, () => {
+    const small = "abc日😀\n".repeat(500_000);
+    const large = "abc日😀\n".repeat(1_000_000);
+    const smallTotal = utf8ByteLength(small);
+    const largeTotal = utf8ByteLength(large);
 
-    expect(result.keptBytes).toBeLessThanOrEqual(total - 10);
-    expect(elapsed, `took ${elapsed.toFixed(1)} ms`).toBeLessThan(1500);
+    expectLinearScaling(
+      "large budget",
+      () => {
+        truncate(small, { maxBytes: smallTotal - 10, mode: "tail" });
+      },
+      () => {
+        truncate(large, { maxBytes: largeTotal - 10, mode: "tail" });
+      },
+    );
+
+    const result = truncate(small, { maxBytes: smallTotal - 10, mode: "tail" });
+    expect(result.keptBytes).toBeLessThanOrEqual(smallTotal - 10);
+    expect(result.originalBytes).toBe(smallTotal);
   });
 });
