@@ -30,8 +30,12 @@
   "types": "./dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/KamelotWalker/truncate-budget.git"
   },
+  "bugs": {
+    "url": "https://github.com/KamelotWalker/truncate-budget/issues"
+  },
+  "homepage": "https://github.com/KamelotWalker/truncate-budget#readme",
   "keywords": [
     "truncate",
     "utf8",
