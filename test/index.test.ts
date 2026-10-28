@@ -421,6 +421,41 @@ describe("marker", () => {
     expect(last?.mode).toBe("head");
   });
 
+  it("throws when a marker function cannot settle on a fixed point", () => {
+    let calls = 0;
+    expect(() =>
+      truncate("abc", {
+        maxBytes: 2,
+        marker: (info) => {
+          calls++;
+          return info.omittedBytes === 1 ? "#" : "";
+        },
+      }),
+    ).toThrow(/did not converge/);
+    expect(calls).toBe(2);
+  });
+
+  it("tells an always-oversized marker function the dropped-marker counts", () => {
+    let calls = 0;
+    let last: TruncateInfo | undefined;
+    const result = truncate("abc", {
+      maxBytes: 2,
+      marker: (info) => {
+        calls++;
+        last = info;
+        return "X".repeat(info.omittedBytes + 5);
+      },
+    });
+
+    expect(result.text).toBe("ab");
+    expect(result.markerOmitted).toBe(true);
+    expect(result.omittedBytes).toBe(1);
+    expect(result.omittedLines).toBe(0);
+    expect(calls).toBe(1);
+    expect(last?.omittedBytes).toBe(result.omittedBytes);
+    expect(last?.omittedLines).toBe(result.omittedLines);
+  });
+
   it("rejects a marker function that does not return a string", () => {
     expect(() =>
       truncate("abcdef", {

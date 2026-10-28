@@ -5,6 +5,9 @@
 
 const encoder = new TextEncoder();
 
+/** Guards against a marker callback that never settles. */
+const MAX_MARKER_CALLS = 32;
+
 /**
  * Marker inserted by default when text is truncated. Its UTF-8 bytes and its
  * lines are charged against the budgets like any other output text.
@@ -100,6 +103,8 @@ export function countLines(text: string): number {
  * @throws {TypeError} for non-string input, unknown `mode`, wrong option types,
  * a marker callback that does not return a string, or no budget at all.
  * @throws {RangeError} for negative or `NaN` budgets.
+ * @throws {Error} if a marker callback never returns a stable marker for stable
+ * counts, so its final counts would not match the returned metadata.
  */
 export function truncate(text: string, options: TruncateOptions = {}): TruncateResult {
   if (typeof text !== "string") {
@@ -142,20 +147,44 @@ export function truncate(text: string, options: TruncateOptions = {}): TruncateR
     };
   }
 
-  let marker = typeof markerOption === "string" ? markerOption : "";
+  let marker = "";
+  let markerBytes = 0;
+  let markerLines = 0;
+  let markerOmitted = false;
 
-  if (typeof markerOption === "function") {
+  if (typeof markerOption === "string") {
+    const fitted = fitMarker(markerOption, maxBytes, maxLines);
+    marker = fitted.text;
+    markerBytes = fitted.bytes;
+    markerLines = fitted.lines;
+    markerOmitted = fitted.omitted;
+  } else {
     // The marker changes the content budget, and the content budget changes the
-    // omit counts shown inside the marker. Iterate until the marker is stable;
-    // decimal counts converge in two or three passes.
-    for (let attempt = 0; attempt < 8; attempt++) {
+    // counts the marker is built from. Iterate on the *effective* marker (empty
+    // when the proposal cannot fit) so an oversized callback is told about the
+    // layout it will actually produce. A callback that never stabilizes has no
+    // self-consistent counts; refuse to report counts it never saw.
+    // An effective marker that repeats was already handed this exact layout;
+    // a pure callback must return the same proposal, so the sequence is a cycle.
+    const seenMarkers = new Set<string>();
+    let proposal = "";
+
+    for (let call = 0; ; call++) {
+      const effective = fitMarker(proposal, maxBytes, maxLines);
+      if (call >= MAX_MARKER_CALLS || seenMarkers.has(effective.text)) {
+        throw new Error(
+          "truncate: marker function did not converge; it must return the same marker for the same counts",
+        );
+      }
+      seenMarkers.add(effective.text);
+
       const layout = computeLayout(
         text,
         originalBytes,
         originalLines,
         mode,
-        subtract(maxBytes, utf8ByteLength(marker)),
-        subtract(maxLines, countLines(marker)),
+        subtract(maxBytes, effective.bytes),
+        subtract(maxLines, effective.lines),
       );
       const next = markerOption({
         mode,
@@ -169,19 +198,17 @@ export function truncate(text: string, options: TruncateOptions = {}): TruncateR
       if (typeof next !== "string") {
         throw new TypeError("truncate: marker function must return a string");
       }
-      if (next === marker) break;
-      marker = next;
-    }
-  }
 
-  let markerBytes = utf8ByteLength(marker);
-  let markerLines = countLines(marker);
-  let markerOmitted = false;
-  if (markerBytes > maxBytes || markerLines > maxLines) {
-    marker = "";
-    markerBytes = 0;
-    markerLines = 0;
-    markerOmitted = true;
+      const nextEffective = fitMarker(next, maxBytes, maxLines);
+      if (nextEffective.text === effective.text) {
+        marker = nextEffective.text;
+        markerBytes = nextEffective.bytes;
+        markerLines = nextEffective.lines;
+        markerOmitted = nextEffective.omitted;
+        break;
+      }
+      proposal = next;
+    }
   }
 
   const layout = computeLayout(
@@ -215,6 +242,27 @@ interface Layout {
   readonly tailText: string;
   readonly omittedBytes: number;
   readonly omittedLines: number;
+}
+
+interface FittedMarker {
+  readonly text: string;
+  readonly bytes: number;
+  readonly lines: number;
+  readonly omitted: boolean;
+}
+
+/**
+ * Normalize a proposed marker: one that does not fit is replaced by the empty
+ * string *before* content budgets are computed, so a marker callback always
+ * sees the layout its proposal would actually produce.
+ */
+function fitMarker(marker: string, maxBytes: number, maxLines: number): FittedMarker {
+  const bytes = utf8ByteLength(marker);
+  const lines = countLines(marker);
+  if (bytes > maxBytes || lines > maxLines) {
+    return { text: "", bytes: 0, lines: 0, omitted: true };
+  }
+  return { text: marker, bytes, lines, omitted: false };
 }
 
 /**

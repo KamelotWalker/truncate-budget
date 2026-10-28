@@ -83,7 +83,7 @@ interface TruncateResult {
 }
 ```
 
-At least one of `maxBytes` or `maxLines` is required. Omitted limits are unlimited (`Infinity`); passing both as `Infinity` throws a `TypeError`. Non-negative finite numbers are floored to integers. `NaN` and negative values throw a `RangeError`; wrong types throw a `TypeError`.
+At least one of `maxBytes` or `maxLines` is required. Omitted limits are unlimited (`Infinity`); passing both as `Infinity` throws a `TypeError`. Non-negative finite numbers are floored to integers. `NaN` and negative values throw a `RangeError`; wrong types throw a `TypeError`. A marker function that never stabilizes throws an `Error`.
 
 ### `utf8ByteLength(text)`
 
@@ -117,7 +117,9 @@ If the marker alone does not fit a budget (`markerBytes > maxBytes` or `markerLi
 
 Any non-empty marker occupies at least one line, so a `maxLines` of 1 leaves room only for the marker. Likewise, a very small `maxBytes` will drop the marker unless you supply a shorter one.
 
-A marker function is called with the omission counts. Because a longer marker leaves less room for content, and the content changes the counts, the callback can be invoked a few times until the numbers are stable. Keep it free of side effects. The final call receives the values reported in the result.
+A marker function is called with the omission counts. Because a longer marker leaves less room for content, and the content changes those counts, the callback may be invoked several times while the counts settle. It must be a pure function of its info and return the same marker for the same counts; otherwise there is no self-consistent answer, and `truncate` throws an `Error` ("marker function did not converge") instead of returning counts the callback never saw.
+
+An oversized proposal is treated as the empty marker **before** the counts are computed. A callback that always returns a marker too large for the budget therefore settles on the dropped-marker layout and receives the counts that are actually returned. The final call always receives the `omittedBytes` and `omittedLines` values reported by `truncate`.
 
 ### Counting and metadata
 
@@ -201,7 +203,7 @@ truncate(text, { maxLines: 100, marker: "" });
 - **Grapheme clusters can be split** between their code points, as described above.
 - **Only `\n` is a line break.** Classic Mac `\r`-only text is counted as one line.
 - **The marker is all-or-nothing.** A marker that does not fit is dropped rather than shortened.
-- **A marker callback may be invoked more than once** while the omission counts converge.
+- **A marker callback may be invoked more than once** while the omission counts converge, and it must stabilize; otherwise `truncate` throws.
 
 ## License
 
