@@ -1,0 +1,22 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "truncate-budget",
+  "description": "Zero-dependency TypeScript library that truncates text to a UTF-8 byte budget and a line budget without splitting characters. Supports head, tail, and head-tail modes plus budgeted truncation markers.",
+  "branch": "main",
+  "folders": [],
+  "excludeFolders": [
+    "dist",
+    "node_modules",
+    "test",
+    "coverage",
+    ".github"
+  ],
+  "rules": [
+    "Call truncate(text, { maxBytes, maxLines }) with at least one finite budget; truncate(text) and truncate(text, {}) throw a TypeError.",
+    "Read result.text, not the return value itself: truncate returns a TruncateResult object with text, truncated, markerOmitted, and byte/line counts.",
+    "The marker counts against both budgets and is dropped when it cannot fit; pass marker: \"\" for plain content with no marker.",
+    "Use mode: \"tail\" or \"head-tail\" when the end of the output matters, such as stack traces; \"head\" is the default.",
+    "omittedBytes excludes the truncation marker; with a marker, keptBytes minus utf8ByteLength(marker) plus omittedBytes equals originalBytes.",
+    "truncate never splits a UTF-8 code point but does not protect grapheme clusters, and it treats ANSI escape sequences as ordinary text; strip ANSI codes before truncating terminal output."
+  ]
+}

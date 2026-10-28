@@ -1,7 +1,7 @@
 {
   "name": "truncate-budget",
-  "version": "0.1.0",
-  "description": "Truncate text under a UTF-8 byte budget and a line budget without splitting code points.",
+  "version": "0.1.1",
+  "description": "Truncate text to a UTF-8 byte budget and a line budget without splitting characters.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -9,7 +9,8 @@
     "node": ">=20"
   },
   "files": [
-    "dist"
+    "dist",
+    "llms.txt"
   ],
   "exports": {
     ".": {
@@ -40,15 +41,19 @@
     "truncate",
     "utf8",
     "utf-8",
-    "bytes",
-    "lines",
-    "text",
+    "byte-length",
+    "line-limit",
     "cli",
     "llm",
-    "agent",
+    "ai-agent",
     "tool-output",
     "context-window",
-    "zero-dependencies"
+    "log-truncation",
+    "head-tail",
+    "typescript",
+    "zero-dependencies",
+    "truncate-utf8-bytes",
+    "truncate-utf8-bytes-alternative"
   ],
   "scripts": {
     "build": "tsup",

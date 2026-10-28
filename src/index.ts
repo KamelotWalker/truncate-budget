@@ -11,24 +11,72 @@ const MAX_MARKER_CALLS = 32;
 /**
  * Marker inserted by default when text is truncated. Its UTF-8 bytes and its
  * lines are charged against the budgets like any other output text.
+ *
+ * @example
+ * import { DEFAULT_MARKER, utf8ByteLength } from "truncate-budget";
+ *
+ * DEFAULT_MARKER; // " … [truncated] … "
+ * utf8ByteLength(DEFAULT_MARKER); // 21
  */
 export const DEFAULT_MARKER = " … [truncated] … ";
 
+/**
+ * Which end(s) of the input to keep when it exceeds a budget.
+ *
+ * - `"head"` keeps a prefix: the first bytes and lines.
+ * - `"tail"` keeps a suffix: the last bytes and lines.
+ * - `"head-tail"` keeps both ends around the marker.
+ *
+ * @example
+ * import { truncate } from "truncate-budget";
+ *
+ * truncate(log, { maxBytes: 4096, mode: "tail" }); // last 4096 bytes
+ */
 export type TruncateMode = "head" | "tail" | "head-tail";
 
-/** Information handed to a `marker` callback. */
+/**
+ * Information handed to a `marker` callback, describing the layout the
+ * proposed marker would produce.
+ *
+ * @example
+ * import { truncate } from "truncate-budget";
+ *
+ * truncate(text, {
+ *   maxBytes: 2048,
+ *   marker: (info) => `… ${info.omittedLines} lines omitted …`,
+ * });
+ */
 export interface TruncateInfo {
+  /** Mode that produced this layout. */
   readonly mode: TruncateMode;
+  /** UTF-8 bytes in the original text. */
   readonly originalBytes: number;
+  /** Lines in the original text (see `countLines`). */
   readonly originalLines: number;
   /** Bytes of the original text that are absent from the output (marker excluded). */
   readonly omittedBytes: number;
   /** Whole original lines that are absent from the output (partially kept lines count as kept). */
   readonly omittedLines: number;
+  /** Configured byte budget, possibly `Infinity`. */
   readonly maxBytes: number;
+  /** Configured line budget, possibly `Infinity`. */
   readonly maxLines: number;
 }
 
+/**
+ * Options accepted by `truncate`. At least one of `maxBytes` or `maxLines`
+ * must be set to a finite number.
+ *
+ * @example
+ * import { truncate, type TruncateOptions } from "truncate-budget";
+ *
+ * const options: TruncateOptions = {
+ *   maxBytes: 50_000,
+ *   maxLines: 2_000,
+ *   mode: "head-tail",
+ * };
+ * truncate(toolOutput, options);
+ */
 export interface TruncateOptions {
   /**
    * Maximum UTF-8 bytes in `result.text`, marker included. Omit (or pass
@@ -50,6 +98,17 @@ export interface TruncateOptions {
   readonly marker?: string | ((info: TruncateInfo) => string);
 }
 
+/**
+ * Result returned by `truncate`: the kept text plus exact accounting of what
+ * the input contained and what was omitted.
+ *
+ * @example
+ * import { truncate, type TruncateResult } from "truncate-budget";
+ *
+ * const result: TruncateResult = truncate(text, { maxLines: 100 });
+ * result.text;          // at most 100 lines, marker included
+ * result.omittedLines;  // whole input lines that were dropped
+ */
 export interface TruncateResult {
   /** The truncated text. Identical to the input when `truncated` is false. */
   readonly text: string;
@@ -70,7 +129,24 @@ export interface TruncateResult {
   readonly omittedLines: number;
 }
 
-/** Number of bytes `text` occupies when encoded as UTF-8. */
+/**
+ * Number of bytes `text` occupies when encoded as UTF-8.
+ *
+ * The result is the exact count used by `maxBytes`, so ASCII characters cost
+ * 1 byte, Latin-1 accents 2, CJK 3, and astral-plane characters such as emoji
+ * 4 bytes each.
+ *
+ * @param text - String to measure, usually command or tool output.
+ * @returns The UTF-8 byte length, which can be larger than `text.length` for
+ * non-ASCII text and is never smaller.
+ * @example
+ * import { utf8ByteLength } from "truncate-budget";
+ *
+ * utf8ByteLength("a");    // 1
+ * utf8ByteLength("é");    // 2
+ * utf8ByteLength("日本");  // 6
+ * utf8ByteLength("😀");   // 4
+ */
 export function utf8ByteLength(text: string): number {
   return encoder.encode(text).byteLength;
 }
@@ -82,6 +158,18 @@ export function utf8ByteLength(text: string): number {
  * line instead of starting a new empty one. `""` has 0 lines, `"a"`, `"a\n"`,
  * and `"\n"` each have 1 line, and `"a\nb"` has 2. `\r\n` counts as one break
  * because only `\n` is counted; a lone `\r` is ordinary text.
+ *
+ * @param text - String to inspect, usually command or tool output.
+ * @returns The line count under the same rule used by `maxLines`, so
+ * `countLines(result.text) === result.keptLines`.
+ * @example
+ * import { countLines } from "truncate-budget";
+ *
+ * countLines("");        // 0
+ * countLines("a");       // 1
+ * countLines("a\n");     // 1
+ * countLines("a\nb");    // 2
+ * countLines("a\r\nb");  // 2
  */
 export function countLines(text: string): number {
   if (text.length === 0) return 0;
@@ -100,11 +188,34 @@ export function countLines(text: string): number {
  * cannot fit, it is dropped (`markerOmitted: true`) and the whole budget goes
  * to content.
  *
+ * When the input already fits, the original string is returned unchanged with
+ * `truncated: false`; no marker is inserted.
+ *
+ * @param text - Text to truncate, typically captured command or tool output.
+ * @param options - Budgets and layout. At least one of `maxBytes` or `maxLines`
+ * must be finite. Defaults to `{}`, which throws because it sets no budget.
+ * @returns The kept text plus byte and line accounting for both the input and
+ * the output.
  * @throws {TypeError} for non-string input, unknown `mode`, wrong option types,
  * a marker callback that does not return a string, or no budget at all.
  * @throws {RangeError} for negative or `NaN` budgets.
  * @throws {Error} if a marker callback never returns a stable marker for stable
  * counts, so its final counts would not match the returned metadata.
+ * @example
+ * import { truncate } from "truncate-budget";
+ *
+ * const result = truncate(toolOutput, {
+ *   maxBytes: 50_000,
+ *   maxLines: 2_000,
+ *   mode: "head-tail",
+ * });
+ *
+ * result.text;         // fits both budgets, marker included
+ * result.truncated;    // false when the input already fit
+ * result.omittedBytes; // original bytes missing from the output
+ * @example
+ * // Keep the last lines, where errors usually are, without a marker.
+ * truncate(log, { maxLines: 200, mode: "tail", marker: "" });
  */
 export function truncate(text: string, options: TruncateOptions = {}): TruncateResult {
   if (typeof text !== "string") {

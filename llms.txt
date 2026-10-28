@@ -1,0 +1,22 @@
+# truncate-budget
+
+> Truncate text to a UTF-8 byte budget and a line budget without splitting characters.
+
+truncate-budget is a zero-dependency TypeScript library for CLIs and AI agent tools that must cap command or tool output by bytes and lines. It keeps only whole Unicode code points, supports head, tail, and head-tail truncation, charges its truncation marker against both budgets, and reports exact omission counts.
+
+## Docs
+
+- [README](https://github.com/KamelotWalker/truncate-budget#readme): Install, quick start, API reference, budget rules, and FAQ.
+- [Why](https://github.com/KamelotWalker/truncate-budget#why): The concrete failures caused by `slice()` and byte-buffer truncation.
+- [Comparison](https://github.com/KamelotWalker/truncate-budget#comparison): Feature, dependency, API-style, and release-date comparison with truncate-utf8-bytes and unicode-byte-truncate.
+- [API reference](https://github.com/KamelotWalker/truncate-budget#api-reference): `truncate`, `utf8ByteLength`, `countLines`, `DEFAULT_MARKER`, and the option, result, and info types.
+- [Budget rules](https://github.com/KamelotWalker/truncate-budget#budget-rules): How byte and line limits interact, marker fitting, omission counting, Unicode boundaries, and CRLF.
+- [When not to use this](https://github.com/KamelotWalker/truncate-budget#when-not-to-use-this): Plain `str.slice` cases, token budgets, streaming, grapheme integrity, and ANSI output.
+- [Limitations](https://github.com/KamelotWalker/truncate-budget#limitations): Honest constraints of the string-in, string-out design.
+
+## Source
+
+- [src/index.ts](https://github.com/KamelotWalker/truncate-budget/blob/main/src/index.ts): Public API with JSDoc examples; the entire implementation.
+- [test/index.test.ts](https://github.com/KamelotWalker/truncate-budget/blob/main/test/index.test.ts): Behavior tests for budgets, markers, Unicode, and CRLF.
+- [package.json](https://github.com/KamelotWalker/truncate-budget/blob/main/package.json): Exports, engines, and release metadata.
+- [npm package](https://www.npmjs.com/package/truncate-budget): Installable tarball and version history.
