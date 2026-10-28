@@ -8,7 +8,7 @@ Truncate text to a UTF-8 byte budget and a line budget in one call, without ever
 npm install truncate-budget
 ```
 
-Node.js >= 20. ESM and CommonJS builds with bundled TypeScript declarations. Zero runtime dependencies. The only platform API used is the global `TextEncoder`.
+Node.js >= 18. ESM and CommonJS builds with bundled TypeScript declarations. Zero runtime dependencies. The only platform API used is the global `TextEncoder`.
 
 ## Quick start
 
@@ -311,7 +311,7 @@ truncate("one\ntwo\nthree\nfour", { maxLines: 3, mode: "head-tail" });
 
 ### Does it work in Bun and Deno?
 
-The ESM build uses only the global `TextEncoder`, so it loads there. The package is tested in CI on Node.js 20, 22, and 24 across Linux, macOS, and Windows.
+The ESM build uses only the global `TextEncoder`, so it loads there. The package is tested in CI on Node.js 18, 20, 22, and 24 across Linux, macOS, and Windows.
 
 ## License
 
